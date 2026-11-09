@@ -1,10 +1,11 @@
 import { FACES, PALETTE, starterProject, makeLayer, key, canAddPixel, paddingFor, resizeProject, makeMotion, validateProject, skinPixelsFromImageData, clamp } from './model.js';
-import { renderEditor, build3D, layerTelemetry, renderCordHtml } from './render.js';
+import { renderEditor, build3D, layerTelemetry, renderCordHtml, renderBrand, clear3DTextureCache } from './render.js';
+import { blockbenchExport, blockbenchImport } from './blockbench.js';
 import { faceSvg, guideHtml, saveText, safeFile } from './export.js';
 
 const $ = id => document.getElementById(id);
 const escapeText = s => String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
-const STORE_KEY = 'minecraft-head-studio:v1';
+const STORE_KEY = 'minecraft-head-studio:v1'; // Keep reading existing v0.1 browser projects
 let project;
 try { const saved = localStorage.getItem(STORE_KEY); project = saved ? validateProject(JSON.parse(saved)) : starterProject(); }
 catch { project = starterProject(); }
@@ -13,6 +14,7 @@ let activeFace = 'front', tool = 'paint', paintColor = PALETTE[0], selection = n
 let rotationX = -18, rotationY = -30, zoom = 1, globalPhase = null;
 let pointerDown = false, pointerButton = 0, selectAnchor = null, lastCell = '';
 let undoStack = [], redoStack = [], lastToastTimer, saveTimer, paintRaf, animation = null;
+let templateImage = null;
 
 function toast(message, error = false) {
   const box = $('toast');
@@ -35,7 +37,7 @@ function pushHistory() {
 }
 function mutate(change, { renderFields = true } = {}) {
   pushHistory();
-  change();
+  change(); clear3DTextureCache();
   if (!project.layers.some(l => l.id === activeLayerId)) activeLayerId = project.layers[0].id;
   refresh({ fields: renderFields }); saveLocal();
 }
@@ -44,13 +46,14 @@ function restore(kind) {
   const to = kind === 'undo' ? redoStack : undoStack;
   if (!from.length) return toast(`Nothing to ${kind}`);
   to.push(JSON.stringify(project));
-  project = validateProject(JSON.parse(from.pop()));
+  project = validateProject(JSON.parse(from.pop())); clear3DTextureCache();
   if (!project.layers.some(l => l.id === activeLayerId)) activeLayerId = project.layers[0].id;
   globalPhase = null; selection = null; refresh(); saveLocal();
 }
 function selectedLayer() { return project.layers.find(l => l.id === activeLayerId) || project.layers[0]; }
 function renderLayersList() {
   $('layer-count').textContent = project.layers.length;
+  $('layer-count-new').textContent = project.layers.length;
   $('layer-list').innerHTML = project.layers.map((l, i) => {
     const t = layerTelemetry(project, l);
     return `<div class="layer-card ${l.id === activeLayerId ? 'active' : ''}"><div class="layer-card-main">
@@ -88,6 +91,10 @@ function renderFields() {
   $('trim-mode').value = project.trimMode;
   $('trim-color').value = project.trimColor;
   $('grid-toggle').checked = project.gridVisible;
+  $('model-grid-toggle').checked = project.modelGridVisible;
+  const ears = project.ears;
+  $('ears-enabled').checked=ears.enabled;
+  for(const [id,field] of [['ears-width','widthMm'],['ears-height','heightMm'],['ears-depth','depthMm'],['ears-vertical','vertical'],['ears-forward','forwardMm'],['ears-color','color']])$(id).value=ears[field];
   const p = project.plotter;
   $('plotter-enabled').checked = p.enabled;
   $('plotter-drive').value = p.drive;
@@ -112,10 +119,9 @@ function renderCanvas() {
   renderEditor(project, activeFace, $('editor-canvas'), { selectedLayerId: activeLayerId, selection, phase: globalPhase, gridVisible: project.gridVisible });
   $('face-selector').querySelectorAll('[data-face]').forEach(b => b.classList.toggle('selected', b.dataset.face === activeFace));
   $('tool-buttons').querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('selected', b.dataset.tool === tool));
-  $('paint-color').value = paintColor;
-  $('color-label').textContent = paintColor.toUpperCase();
+  // Never reset a native color chooser from within paint/render; that used to close it.
 }
-function renderModel() { build3D(project, $('scene3d'), { rotationX, rotationY, zoom, phase: globalPhase }); }
+function renderModel() { build3D(project, $('scene3d'), { rotationX, rotationY, zoom, phase: globalPhase, grid: project.modelGridVisible, selectedLayerId: activeLayerId }); }
 function refresh({ fields = true } = {}) {
   renderLayersList(); renderStats(); renderMotions();
   if (fields) renderFields();
@@ -139,13 +145,13 @@ function drawAt(x, y, forcedTool) {
   const dest = l.surfaces[activeFace], k = key(x, y);
   if (brush === 'pick') {
     const pixel = dest[k];
-    if (pixel) { paintColor = pixel.color; renderCanvas(); toast('Pixel color sampled'); }
+    if (pixel) { setBrushColor(pixel.color); toast('Pixel color sampled'); }
     return;
   }
-  if (brush === 'erase') { delete dest[k]; scheduleCanvasModel(); return; }
+  if (brush === 'erase') { delete dest[k]; clear3DTextureCache(); scheduleCanvasModel(); return; }
   if (brush !== 'paint' && brush !== 'mesh') return;
   if (!canAddPixel(dest, n, x, y)) { toast('Extension pixels must be directly adjacent to another pixel on this layer.', true); return; }
-  dest[k] = { color: paintColor, mesh: brush === 'mesh' };
+  dest[k] = { color: paintColor, mesh: brush === 'mesh' }; clear3DTextureCache();
   if (!l.visible) l.visible = true;
   scheduleCanvasModel();
 }
@@ -189,7 +195,7 @@ function applySkin(data, source) {
   const replacement = skinPixelsFromImageData(data, project.resolution);
   if (!window.confirm('Replace the current head skin and reset sliders / extra layers? Export a JSON backup first if you want to keep this design.')) return;
   mutate(() => {
-    project.layers = replacement; project.motions = [];project.plotter.enabled = false;
+    project.layers = replacement; project.motions = [];project.plotter.enabled = false;project.ears.enabled = false;
     project.username = source || ''; activeLayerId = project.layers[0].id;
     project.name = source ? `${source}'s foamboard head` : 'Imported foamboard head';
     selection = null; globalPhase = null;
@@ -225,7 +231,7 @@ $('project-file').addEventListener('change', async e => {
     if (file.size > 7_000_000) throw new Error('Project exceeds 7MB limit');
     const incoming = validateProject(JSON.parse(await file.text()));
     if (!confirm('Replace your current project with this JSON?')) return;
-    pushHistory(); project = incoming; activeLayerId = project.layers[0].id; globalPhase = null;selection = null;
+    pushHistory(); project = incoming; clear3DTextureCache(); activeLayerId = project.layers[0].id; globalPhase = null;selection = null;
     refresh();saveLocal();toast('Project imported');
   } catch (err) { toast(`Invalid project: ${err.message}`, true); }
   finally { e.target.value = ''; }
@@ -242,8 +248,9 @@ $('undo-button').addEventListener('click', () => restore('undo'));
 $('redo-button').addEventListener('click', () => restore('redo'));
 $('face-selector').addEventListener('click', e => { const button = e.target.closest('[data-face]'); if (!button) return; activeFace = button.dataset.face; selection = null;renderCanvas(); });
 $('tool-buttons').addEventListener('click', e => { const button = e.target.closest('[data-tool]'); if (!button) return; tool = button.dataset.tool; renderCanvas(); });
-$('paint-color').addEventListener('input', e => { paintColor = e.target.value; $('color-label').textContent = paintColor.toUpperCase(); });
+$('paint-color').addEventListener('input', e => setBrushColor(e.target.value));
 $('grid-toggle').addEventListener('change', e => { project.gridVisible = e.target.checked; renderCanvas(); saveLocal(); });
+$('model-grid-toggle').addEventListener('change', e => { project.modelGridVisible=e.target.checked;renderModel();saveLocal(); });
 $('layer-list').addEventListener('click', e => {
   const b = e.target.closest('button[data-action]'); if (!b) return;
   if (b.dataset.action === 'select-layer') { activeLayerId = b.dataset.id;refresh(); }
@@ -341,7 +348,7 @@ for (const [input, which, index, maximum] of [['eye-left-x','eyeLeft',0,6],['eye
   $(input).addEventListener('change', e => mutate(() => {project.plotter[which][index] = clamp(Math.round(Number(e.target.value)),0,maximum); }));
 }
 for (const [input, prop] of [['pupil-x','x'],['pupil-y','y']]) {
-  $(input).addEventListener('input', e => { project.plotter[prop] = Number(e.target.value)/100; $(input+'-label').textContent = `${e.target.value}%`; $('cord-lengths').innerHTML = renderCordHtml(project);scheduleCanvasModel();saveLocal(); });
+  $(input).addEventListener('input', e => { project.plotter[prop] = Number(e.target.value)/100; clear3DTextureCache(); $(input+'-label').textContent = `${e.target.value}%`; $('cord-lengths').innerHTML = renderCordHtml(project);scheduleCanvasModel();saveLocal(); });
 }
 $('reset-view').addEventListener('click', () => { rotationX = -18;rotationY = -30;zoom=1;$('zoom').value=1;renderModel(); });
 $('zoom').addEventListener('input', e => {zoom=Number(e.target.value);renderModel();});
@@ -359,4 +366,169 @@ window.addEventListener('keydown', e => {
   if (e.key.toLowerCase()==='e') {tool='erase';renderCanvas();}
   if (e.key.toLowerCase()==='s' && !e.ctrlKey && !e.metaKey) {tool='select';renderCanvas();}
 });
+
+// Studio v0.2: a narrow left toolbar with all setup panels collapsed by default.
+function toggleDrawer(force) {
+  const open=force??!document.body.classList.contains('drawer-open');
+  document.body.classList.toggle('drawer-open',open);
+  $('left-drawer-toggle').setAttribute('aria-expanded',String(open));
+}
+$('left-drawer-toggle').addEventListener('click',()=>toggleDrawer());
+$('left-drawer-close').addEventListener('click',()=>toggleDrawer(false));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')toggleDrawer(false); });
+
+function setBrushColor(hex) {
+  if(!/^#[\da-f]{6}$/i.test(hex))return;
+  paintColor=hex.toLowerCase();
+  if($('paint-color').value!==paintColor)$('paint-color').value=paintColor;
+  $('paint-hex').value=paintColor.toUpperCase();
+  $('color-label').textContent=paintColor.toUpperCase();
+  document.querySelectorAll('#color-palette button').forEach(b=>b.classList.toggle('selected',b.dataset.hex===paintColor));
+}
+$('color-palette').innerHTML=PALETTE.map(c=>`<button type="button" style="background:${c}" data-hex="${c}" title="Use ${c}" aria-label="Use ${c}"></button>`).join('');
+$('color-palette').addEventListener('click',e=>{const b=e.target.closest('button[data-hex]');if(b)setBrushColor(b.dataset.hex);});
+$('paint-hex').addEventListener('change',e=>{if(!/^#[0-9a-f]{6}$/i.test(e.target.value))return toast('Use a six-digit hex color, for example #3A5269',true);setBrushColor(e.target.value);});
+setBrushColor(paintColor);
+
+// Owner-supplied MinePic reference, keyed to the exact UUID rather than a
+// potentially changed Minecraft username. No AI-generated imagery is used.
+const OWNER_SKIN_UUID = '234d0c6aad2846eab6f26431c391c10c';
+const OWNER_HEAD_URL = `https://minepic.org/head/${OWNER_SKIN_UUID}/256`;
+const OWNER_ICON_URL = `https://minepic.org/head/${OWNER_SKIN_UUID}/64`;
+const ownerLogo = $('brand-mark');
+const favicon = document.querySelector('link[rel="icon"]');
+if (favicon) favicon.addEventListener('error', () => { if (!favicon.href.endsWith('/favicon.png')) favicon.href = '/favicon.png'; });
+let exactLocalOwnerRender = null;
+
+// Show precisely the MinePic head supplied by the owner. If MinePic is down,
+// use a locally rendered cube built from the SAME UUID's raw Mojang skin.
+// If both services fail, use neutral HS lettering rather than the old,
+// incorrect illustrated head.
+ownerLogo.addEventListener('error', () => {
+  const backup = exactLocalOwnerRender || '/logo.png';
+  if (!ownerLogo.src.endsWith(backup) && ownerLogo.src !== backup) ownerLogo.src = backup;
+});
+ownerLogo.src = OWNER_HEAD_URL;
+if (favicon) favicon.href = OWNER_ICON_URL;
+
+async function loadOwnerBrand() {
+  if (!/^https?:$/.test(location.protocol)) return;
+  try {
+    // A 32-hex-character ID now bypasses username resolution on our API.
+    const res = await fetch(`/api/skin/${OWNER_SKIN_UUID}`, { signal: AbortSignal.timeout(18000) });
+    if (!res.ok) throw new Error(`Skin service returned ${res.status}`);
+    const blob = await res.blob();
+    if (blob.size > 2_000_000) throw new Error('Skin PNG exceeds allowed size');
+    const temp = URL.createObjectURL(blob);
+    const image = new Image();
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve; image.onerror = reject; image.src = temp;
+      });
+      if (image.width > 1024 || image.height > 1024) throw new Error('Skin exceeds maximum dimensions');
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width; canvas.height = image.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(image, 0, 0);
+      const layers = skinPixelsFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height), 8);
+      const exactProject = starterProject(); exactProject.layers = layers;
+      exactLocalOwnerRender = renderBrand(exactProject);
+      // Preserve the exact MinePic logo unless that image failed to load.
+      // Favicon comes from the verified raw-skin pixels, not a placeholder.
+      if (favicon) favicon.href = exactLocalOwnerRender;
+      if (ownerLogo.getAttribute('src') === '/logo.png') ownerLogo.src = exactLocalOwnerRender;
+    } finally { URL.revokeObjectURL(temp); }
+  } catch (err) {
+    console.info('Exact UUID skin unavailable. Keeping the supplied MinePic head when accessible.', err?.message);
+  }
+}
+loadOwnerBrand();
+
+const ears=$('ears-enabled');
+ears.addEventListener('change',e=>mutate(()=>{project.ears.enabled=e.target.checked;}));
+for(const [id,field,lo,hi] of [['ears-width','widthMm',1,300],['ears-height','heightMm',1,300],['ears-depth','depthMm',1,300],['ears-vertical','vertical',-1,1],['ears-forward','forwardMm',-200,200]]) {
+  $(id).addEventListener('change',e=>mutate(()=>{project.ears[field]=clamp(e.target.value,lo,hi);}));
+}
+$('ears-color').addEventListener('change',e=>mutate(()=>{project.ears.color=e.target.value;}));
+
+// The image template is kept only in this tab's memory. No server storage, and
+// the project JSON contains only painted pixels rather than base64 PNGs.
+function rememberTemplate(canvas,face) {
+  templateImage={canvas,face};
+  Object.defineProperty(project,'_template',{value:templateImage,configurable:true,enumerable:false});
+  $('template-status').textContent=`Previewing template on ${face}; export or stamp to save pixels.`;
+  renderCanvas();
+}
+$('template-file').addEventListener('change',async e=>{
+  const file=e.target.files?.[0];e.target.value='';if(!file)return;
+  try {
+    if(file.size>3_000_000)throw Error('Template must be under 3 MB');
+    if(file.name.toLowerCase().endsWith('.json')) {
+      const obj=JSON.parse(await file.text());
+      if(obj?.format!=='headstudio-face-template' || !FACES.includes(obj.face)||!obj.surface||typeof obj.surface!=='object'||Object.keys(obj.surface).length>10000)throw Error('Not a valid Head Studio face template');
+      const entries=Object.entries(obj.surface);
+      if(entries.some(([loc,pix])=>!/^[-\d]+,[-\d]+$/.test(loc)||!/^#[0-9a-f]{6}$/i.test(pix?.color||'')))throw Error('Template has invalid pixels');
+      const n=project.resolution;
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=n;
+      const c=canvas.getContext('2d');const factor=n/(Number(obj.resolution)||n);
+      for(const [loc,pix] of entries){const [x,y]=loc.split(',').map(Number);c.fillStyle=pix.color;c.fillRect(Math.floor(x*factor),Math.floor(y*factor),Math.max(1,Math.ceil(factor)),Math.max(1,Math.ceil(factor)));}
+      rememberTemplate(canvas,activeFace);
+      templateImage.surface=obj.surface;templateImage.resolution=Number(obj.resolution)||n;
+    } else if(file.type==='image/png'||file.name.toLowerCase().endsWith('.png')) {
+      const blob=URL.createObjectURL(file);const img=new Image();
+      try {await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('Could not decode template PNG'));img.src=blob;});
+        if(img.width>2048||img.height>2048)throw Error('Template PNG must be 2048px or smaller');
+        const canvas=document.createElement('canvas');canvas.width=canvas.height=project.resolution;
+        const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        rememberTemplate(canvas,activeFace);
+      }finally {URL.revokeObjectURL(blob);}
+    }else throw Error('Use PNG or .headtemplate.json');
+  }catch(err){toast(`Template: ${err.message}`,true);}
+});
+$('template-apply').addEventListener('click',()=>{
+  if(!templateImage)return toast('Load a template image first',true);
+  if(templateImage.face!==activeFace)return toast(`Switch to the ${templateImage.face} face to stamp this template`,true);
+  const n=project.resolution,ctx=templateImage.canvas.getContext('2d',{willReadFrequently:true}),data=ctx.getImageData(0,0,n,n).data;
+  if(!confirm(`Stamp all nontransparent template pixels onto ${selectedLayer().name} / ${activeFace}? Undo is available.`))return;
+  mutate(()=>{
+    const surface=selectedLayer().surfaces[activeFace];
+    if(templateImage.surface) {
+      const factor=n/templateImage.resolution,pad=paddingFor(n);
+      for(const [loc,pix] of Object.entries(templateImage.surface)) {
+        const [x,y]=loc.split(',').map(Number);
+        const xx=Math.floor(x*factor),yy=Math.floor(y*factor);
+        if(xx>=-pad && yy>=-pad && xx<n+pad && yy<n+pad)surface[key(xx,yy)]={color:pix.color,mesh:!!pix.mesh};
+      }
+    } else for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+      const i=(y*n+x)*4;if(data[i+3]<24)continue;
+      surface[key(x,y)]={color:'#'+[data[i],data[i+1],data[i+2]].map(v=>v.toString(16).padStart(2,'0')).join(''),mesh:data[i+3]<180};
+    }
+    delete project._template;templateImage=null;
+  });
+  $('template-status').textContent='Template stamped; the colored pixels are now part of your project.';
+});
+$('template-export').addEventListener('click',()=>{
+  const file={format:'headstudio-face-template',version:1,resolution:project.resolution,face:activeFace,surface:selectedLayer().surfaces[activeFace]};
+  saveText(`${safeFile(project.name)}-${activeFace}.headtemplate.json`,JSON.stringify(file),'application/json');
+  toast('Compact face template downloaded');
+});
+$('bbmodel-export').addEventListener('click',()=>{
+  try {saveText(`${safeFile(project.name)}.bbmodel`,JSON.stringify(blockbenchExport(project)),'application/json');toast('Blockbench model exported, with editable cuboids and texture atlases');}
+  catch(err){toast(`Blockbench export: ${err.message}`,true);}
+});
+$('bbmodel-file').addEventListener('change',async e=>{
+  const file=e.target.files?.[0];e.target.value='';if(!file)return;
+  try {
+    if(file.size>25_000_000)throw Error('Blockbench model exceeds 25 MB');
+    const loaded=blockbenchImport(await file.text());
+    if(!confirm('Replace current project from the Head Studio data embedded in this Blockbench model?'))return;
+    pushHistory();project=loaded;clear3DTextureCache();templateImage=null;selection=null;globalPhase=null;activeLayerId=project.layers[0].id;refresh();saveLocal();toast('Head Studio project restored from Blockbench file');
+  }catch(err){toast(`Blockbench import: ${err.message}`,true);}
+});
+// Keep the 3D canvas sized to the viewport, even after responsive layout changes.
+if(typeof ResizeObserver!=='undefined') {
+  const observer=new ResizeObserver(()=>requestAnimationFrame(renderModel));
+  observer.observe($('model-viewport'));
+}
+
 refresh();

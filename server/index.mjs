@@ -11,7 +11,7 @@ const TTL_MS = 10 * 60_000;
 const mime = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.json':'application/json' };
 const headers = {
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob: https://minepic.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
   'X-Frame-Options': 'DENY'
 };
 function send(res, status, body, type = 'application/json') {
@@ -26,10 +26,16 @@ async function loadSkin(name) {
   const nameLower = name.toLowerCase(), hit = cache.get(nameLower);
   if (hit && hit.expire > Date.now()) return hit;
   let account;
-  try { account = await getJson(`https://api.minecraftservices.com/minecraft/profile/lookup/name/${name}`); }
-  catch (e) {
-    if (e.status === 404) throw e;
-    account = await getJson(`https://api.mojang.com/users/profiles/minecraft/${name}`);
+  if (/^[a-f0-9]{32}$/i.test(name)) {
+    // Explicit UUID lookup for an owner-pinned brand; avoids resolving a
+    // different username and always uses the same Minecraft account.
+    account = { id: name.toLowerCase(), name: '' };
+  } else {
+    try { account = await getJson(`https://api.minecraftservices.com/minecraft/profile/lookup/name/${name}`); }
+    catch (e) {
+      if (e.status === 404) throw e;
+      account = await getJson(`https://api.mojang.com/users/profiles/minecraft/${name}`);
+    }
   }
   if (!/^[\da-f]{32}$/i.test(account?.id || '')) throw new Error('Unexpected player profile');
   const profile = await getJson(`https://sessionserver.mojang.com/session/minecraft/profile/${account.id}`);
@@ -45,7 +51,7 @@ async function loadSkin(name) {
   if (!response.ok || Number(response.headers.get('content-length') || 0) > 2_000_000) throw new Error('Skin download failed');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (bytes.length > 2_000_000 || bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) throw new Error('Downloaded skin is not a valid PNG');
-  const result = { bytes, username: account.name || name, expire: Date.now() + TTL_MS };
+  const result = { bytes, username: profile?.name || account.name || name, expire: Date.now() + TTL_MS };
   if (cache.size > 40) cache.delete(cache.keys().next().value);
   cache.set(nameLower, result);
   return result;
@@ -62,10 +68,10 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, JSON.stringify({ error: 'Method not allowed' }));
     const u = new URL(req.url, 'http://localhost');
-    if (u.pathname === '/api/health') return send(res, 200, JSON.stringify({ status: 'ok', version: '0.1.0' }));
+    if (u.pathname === '/api/health') return send(res, 200, JSON.stringify({ status: 'ok', version: '0.2.1' }));
     if (u.pathname.startsWith('/api/skin/')) {
       const name = decodeURIComponent(u.pathname.slice('/api/skin/'.length));
-      if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) return send(res, 400, JSON.stringify({ error: 'Enter a valid Java Edition username (3–16 letters, numbers or underscores)' }));
+      if (!/^(?:[A-Za-z0-9_]{3,16}|[a-f0-9]{32})$/i.test(name)) return send(res, 400, JSON.stringify({ error: 'Enter a Java Edition username (3–16 characters) or a 32-character UUID' }));
       if (!permitted(req.socket.remoteAddress || 'unknown')) return send(res, 429, JSON.stringify({ error: 'Too many skin lookups. Try again in a minute.' }));
       try {
         const result = await loadSkin(name);
@@ -73,7 +79,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(req.method === 'HEAD' ? undefined : result.bytes);
       } catch (err) { return send(res, err.status === 404 ? 404 : 502, JSON.stringify({ error: err.message || 'Skin lookup failed' })); }
     }
-    const files = new Map([['/','index.html'], ['/index.html','index.html'], ['/favicon.svg','favicon.svg'], ['/src/app.js','src/app.js'], ['/src/model.js','src/model.js'], ['/src/render.js','src/render.js'], ['/src/export.js','src/export.js'], ['/src/styles.css','src/styles.css']]);
+    const files = new Map([['/','index.html'], ['/index.html','index.html'], ['/favicon.svg','favicon.svg'], ['/favicon.png','favicon.png'], ['/logo.png','logo.png'], ['/src/app.js','src/app.js'], ['/src/model.js','src/model.js'], ['/src/render.js','src/render.js'], ['/src/export.js','src/export.js'], ['/src/styles.css','src/styles.css'], ['/src/studio-v02.css','src/studio-v02.css'], ['/src/blockbench.js','src/blockbench.js']]);
     const rel = files.get(u.pathname);
     if (!rel) return send(res, 404, JSON.stringify({ error: 'Not found' }));
     const target = path.join(root, rel);

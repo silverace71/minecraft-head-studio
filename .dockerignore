@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+*.zip
+*.bundle
+*.md
+LICENSE
+tests
+.DS_Store

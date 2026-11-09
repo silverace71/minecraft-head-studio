@@ -1,9 +1,9 @@
 # 1. Publish to GitHub. 2. Let GitHub Actions publish your GHCR image.
-# 3. Replace YOUR_GITHUB_USERNAME with your actual GitHub username (lowercase).
+# 3. Replace silverace71 with your actual GitHub username (lowercase).
 # 4. Paste this file into Portainer > Stacks > Add stack > Web editor.
 services:
   minecraft-head-studio:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/minecraft-head-studio:latest
+    image: ghcr.io/silverace71/minecraft-head-studio:latest
     restart: unless-stopped
     init: true
     read_only: true
@@ -12,7 +12,7 @@ services:
     cap_drop:
       - ALL
     ports:
-      - "8080:8080"
+      - "3000:8080"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

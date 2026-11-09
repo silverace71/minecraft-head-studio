@@ -37,7 +37,8 @@ export function starterProject() {
   return {
     version: 1, name: 'My Minecraft foamboard head', username: '', resolution: 8,
     headSizeMm: 280, foamMm: 5, trimMode: 'paint', trimColor: '#202735',
-    gridVisible: true, layers: [base, overlay], motions: [],
+    gridVisible: true, modelGridVisible: true, layers: [base, overlay], motions: [],
+    ears: { enabled: false, widthMm: 35, heightMm: 70, depthMm: 30, vertical: 0, forwardMm: 0, color: '#43546d' },
     plotter: { enabled: false, drive: 'four-corner', eyeLeft: [1, 2], eyeRight: [5, 2],
       pupilColor: '#1b293b', eyeColor: '#f5fbff', x: 0.5, y: 0.5 }
   };
@@ -104,6 +105,10 @@ export function validateProject(obj) {
   if (obj.layers[0].kind !== 'base' || obj.layers[1].kind !== 'overlay') throw Error('First two layers must be the base and outer skin');
   if (!FACES.every(f => obj.layers.every(l => l.surfaces && typeof l.surfaces[f] === 'object' && l.surfaces[f] !== null))) throw Error('Invalid face data');
   if (!Array.isArray(obj.motions) || obj.motions.length > 50 || !obj.plotter) throw Error('Invalid mechanisms');
+  if (!obj.ears) obj.ears = { enabled:false, widthMm:35, heightMm:70, depthMm:30, vertical:0, forwardMm:0, color:'#43546d' };
+  if (typeof obj.modelGridVisible !== 'boolean') obj.modelGridVisible = true;
+  for (const field of ['widthMm','heightMm','depthMm']) { if (!Number.isFinite(Number(obj.ears[field])) || Number(obj.ears[field]) < 1 || Number(obj.ears[field]) > 300) throw Error('Invalid ear dimensions'); }
+  if (!/^#[0-9a-f]{6}$/i.test(obj.ears.color)) throw Error('Invalid ear color');
   if (!Number.isFinite(Number(obj.headSizeMm)) || obj.headSizeMm < 80 || obj.headSizeMm > 1500) throw Error('Invalid head width');
   if (!Number.isFinite(Number(obj.foamMm)) || obj.foamMm < 1 || obj.foamMm > 25) throw Error('Invalid foam thickness');
   let total = 0;
