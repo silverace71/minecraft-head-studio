@@ -1,6 +1,6 @@
 # Minecraft Head Studio
 
-**Self-hosted pixel-to-foamboard head designer** · GPL-3.0-or-later · prototype v0.2.1
+**Self-hosted pixel-to-foamboard head designer** · GPL-3.0-or-later · prototype v0.2.2
 
 Convert a Minecraft Java player's head skin or a local PNG into editable panels, add extended material layers and sliders, preview in 2D/3D, and export cutting/coloring/gluing instructions. No accounts, analytics, third-party JavaScript CDNs, build toolchains, or external JavaScript dependencies. The header head image references MinePic and a Mojang-based fallback; visitors may contact MinePic to fetch the head.
 
@@ -119,3 +119,9 @@ This release preserves your v0.1 JSON project format and local browser save key.
 The website logo uses the owner-provided MinePic isometric head image keyed to UUID `234d0c6aad2846eab6f26431c391c10c` (not a username). The favicon uses the same exact head. If MinePic fails, the app attempts to render that UUID’s raw Mojang skin locally; if both are unavailable, the bundled assets contain only neutral `HS` typography, **not an AI-generated head**. Live branding requires the browser or server to reach MinePic/Mojang. To bundle the exact head for offline use, supply the PNG download of that skin. See [UPDATE-GITHUB.md](UPDATE-GITHUB.md) for how to update GitHub entirely in the browser and re-pull the container in Portainer.
 
 For a Portainer web-editor deployment, the sample `portainer-stack.yml` uses `ghcr.io/silverace71/minecraft-head-studio:latest` with **host port 3000 → container port 8080**. Keep your currently configured host port if you prefer a different number; you do not need to rebuild the app just to change it. For local Docker Compose, `HEAD_STUDIO_PORT=3000` is the new default.
+
+
+### v0.2.2: 3D depth ordering fix
+
+The 3D preview now uses a WebGL depth buffer to draw opaque skin and translucent overlay pixels with correct per-pixel occlusion, including both sides of every face. If WebGL is disabled, the app uses its own software depth-buffered renderer. Existing projects, material layers, zoom controls, build exports, and skin/fabrication formats are unchanged.
+

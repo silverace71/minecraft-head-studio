@@ -1,3 +1,5 @@
+import { renderCPU3D } from './cpu3d-renderer.js';
+import { renderWebGL } from './webgl-renderer.js';
 import { FACES, paddingFor, parseKey, sortedLayers, offsets, cordLengths } from './model.js';
 
 function paintPixel(ctx, pixel, x, y, cell) {
@@ -186,7 +188,8 @@ function drawSolidQuad(ctx,p,color){
 }
 // No image regeneration while simply orbiting the model.
 const textureCache=new Map();
-export function clear3DTextureCache(){textureCache.clear();}
+let textureRevision=0;
+export function clear3DTextureCache(){textureCache.clear();textureRevision++;}
 function cachedTexture(project,layer,face,phase,n,pad){
   const cacheKey=`${layer.id}:${face}:${phase??'still'}:${n}`;
   if(!textureCache.has(cacheKey)){
@@ -196,6 +199,22 @@ function cachedTexture(project,layer,face,phase,n,pad){
   return textureCache.get(cacheKey);
 }
 export function build3D(project, canvas, {rotationX=-18,rotationY=-30,zoom=1,phase=null,grid=true,transparent=false,brand=false,selectedLayerId=null}={}) {
+  const opts={rotationX,rotationY,zoom,phase,grid,transparent,brand,selectedLayerId};
+  const plotterTexture=(p,n,pad)=>renderFace(p,'front',{plotterOnly:true,cell:Math.max(2,Math.floor(512/(n+2*pad)))});
+  try {
+    if(renderWebGL(project,canvas,opts,cachedTexture,plotterTexture,textureRevision))return;
+  } catch(error) {console.warn('WebGL 3D renderer unavailable; switching to software depth buffer:',error);}
+  // A context with a failed WebGL program cannot switch to 2D in-place.
+  // Replace only the viewport canvas, never the user's editable project.
+  if(!canvas.getContext('2d')){
+    const fresh=document.createElement('canvas');
+    fresh.id=canvas.id;fresh.className=canvas.className;
+    fresh.width=canvas.width;fresh.height=canvas.height;
+    if(canvas.parentNode)canvas.replaceWith(fresh);
+    canvas=fresh;
+  }
+  if(renderCPU3D(project,canvas,opts,cachedTexture,plotterTexture))return;
+  // Legacy emergency fallback for environments without WebGL. The depth-buffered path above is preferred.
   const ctx=canvas.getContext('2d',{alpha:true});
   const rect=canvas.getBoundingClientRect();
   const w=brand?canvas.width:Math.max(200,Math.round(rect.width || canvas.width || 600));

@@ -1,4 +1,4 @@
-# Updating Head Studio on GitHub and Portainer — v0.2
+# Updating Head Studio on GitHub and Portainer — v0.2.2
 
 Repo: <https://github.com/silverace71/minecraft-head-studio>
 Container: `ghcr.io/silverace71/minecraft-head-studio:latest`
@@ -6,18 +6,18 @@ Container: `ghcr.io/silverace71/minecraft-head-studio:latest`
 ## Before replacing source code
 
 1. Open your running website and **Save JSON** for designs you care about. v0.2 keeps the `minecraft-head-studio:v1` browser autosave key, but a manual backup is safer.
-2. Download and unzip `minecraft-head-studio-v02-update.zip`. It contains files that changed between the original v0.1 source ZIP and this release.
+2. Download and unzip `minecraft-head-studio-v022-3d-fix.zip`. It contains files that changed between the original v0.1 source ZIP and this release.
 3. Keep the folder structure: `server/index.mjs`, `src/*.js`, `src/studio-v02.css`, etc. Do not nest the update folder itself inside the GitHub repository.
 
 ## Website-only method: github.dev
 
 1. Open <https://github.com/silverace71/minecraft-head-studio> while logged in.
 2. Press the `.` (period) key. GitHub opens VS Code for the Web at `github.dev`.
-3. In Explorer (left side), drag files from the extracted update ZIP into the matching existing repository folders. If a replacement is requested, choose **Replace/Overwrite**. `index.html`, `Dockerfile`, `README.md`, and the new PNG assets go at the repository root. Copy contents of `src` into `src`, and `server/index.mjs` into `server`.
-4. Verify the changes appear in Source Control (branch icon). Commit to `main` with message `Head Studio v0.2 — editor and renderer refresh`; push/sync if requested.
+3. In Explorer (left side), drag files from the extracted update ZIP into the matching existing repository folders. If a replacement is requested, choose **Replace/Overwrite**. `index.html`, `Dockerfile`, `README.md`, and the new PNG assets go at the repository root. Copy contents of `src` into `src`, and `server/index.mjs` into `server`. **Make sure the two new files** `src/webgl-renderer.js` and `src/cpu3d-renderer.js` are present; the 3D view needs both.
+4. Verify the changes appear in Source Control (branch icon). Commit to `main` with message `Head Studio v0.2.2 — repair depth-aware 3D rendering`; push/sync if requested.
 5. Go back to github.com → **Actions** → **Publish Docker image** (or **Build and Publish Docker Image** if you used the other workflow). Wait for the workflow to finish with a green check.
 6. In Portainer → **Stacks** → `minecraft-head-studio` → **Editor** → **Update the stack**, and enable **Re-pull image and redeploy** when offered. Your existing host port mapping can stay exactly as it is.
-7. Reload the website. If it appears unchanged, hard refresh with Ctrl+Shift+R. Use `/api/health` to check server `version: 0.2.0`.
+7. Reload the website. If it appears unchanged, hard refresh with Ctrl+Shift+R. Use `/api/health` to check server `version: 0.2.2`.
 
 The web UI does not publish containers directly. GitHub Actions builds and pushes an image to GHCR, then Portainer runs it. Browser edits do not affect the live container until you redeploy it.
 
@@ -36,7 +36,7 @@ Copy the **contents** of the extracted v0.2 update ZIP into that checkout, repla
 
 ```sh
 git add -A
-git commit -m "Head Studio v0.2 editor and renderer refresh"
+git commit -m "Head Studio v0.2.2 depth-renderer fix"
 git push origin main
 ```
 
@@ -45,6 +45,14 @@ Check the green GitHub Actions build, then update Portainer as above.
 ## Updating the website in future
 
 Edit any file on GitHub (or in github.dev), commit to `main`, check Actions, and re-pull in Portainer. `:latest` is not guaranteed to update an already-running container by itself.
+
+## 3D-specific fixes
+
+- A depth buffer now resolves overlapping head and hat skin surfaces by actual pixel depth, not an average depth for each entire face.
+- WebGL is preferred when supported; the software fallback also uses a per-pixel depth buffer.
+- Both front and back surfaces remain visible (no back-face culling), and fully transparent skin pixels do not hide the underlying shell.
+- JavaScript/CSS are served with no-store caching so a GitHub/Portainer redeploy does not leave stale renderer code behind.
+- If an imported skin intentionally contains truly transparent base pixels, those remain holes in the model. Hide the opposite wall only by modifying the source face or changing the design.
 
 ## Notes
 

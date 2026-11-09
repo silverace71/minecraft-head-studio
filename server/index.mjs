@@ -68,7 +68,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, JSON.stringify({ error: 'Method not allowed' }));
     const u = new URL(req.url, 'http://localhost');
-    if (u.pathname === '/api/health') return send(res, 200, JSON.stringify({ status: 'ok', version: '0.2.1' }));
+    if (u.pathname === '/api/health') return send(res, 200, JSON.stringify({ status: 'ok', version: '0.2.2' }));
     if (u.pathname.startsWith('/api/skin/')) {
       const name = decodeURIComponent(u.pathname.slice('/api/skin/'.length));
       if (!/^(?:[A-Za-z0-9_]{3,16}|[a-f0-9]{32})$/i.test(name)) return send(res, 400, JSON.stringify({ error: 'Enter a Java Edition username (3–16 characters) or a 32-character UUID' }));
@@ -79,12 +79,12 @@ const server = http.createServer(async (req, res) => {
         return res.end(req.method === 'HEAD' ? undefined : result.bytes);
       } catch (err) { return send(res, err.status === 404 ? 404 : 502, JSON.stringify({ error: err.message || 'Skin lookup failed' })); }
     }
-    const files = new Map([['/','index.html'], ['/index.html','index.html'], ['/favicon.svg','favicon.svg'], ['/favicon.png','favicon.png'], ['/logo.png','logo.png'], ['/src/app.js','src/app.js'], ['/src/model.js','src/model.js'], ['/src/render.js','src/render.js'], ['/src/export.js','src/export.js'], ['/src/styles.css','src/styles.css'], ['/src/studio-v02.css','src/studio-v02.css'], ['/src/blockbench.js','src/blockbench.js']]);
+    const files = new Map([['/','index.html'], ['/index.html','index.html'], ['/favicon.svg','favicon.svg'], ['/favicon.png','favicon.png'], ['/logo.png','logo.png'], ['/src/app.js','src/app.js'], ['/src/model.js','src/model.js'], ['/src/render.js','src/render.js'], ['/src/webgl-renderer.js','src/webgl-renderer.js'], ['/src/cpu3d-renderer.js','src/cpu3d-renderer.js'], ['/src/export.js','src/export.js'], ['/src/styles.css','src/styles.css'], ['/src/studio-v02.css','src/studio-v02.css'], ['/src/blockbench.js','src/blockbench.js']]);
     const rel = files.get(u.pathname);
     if (!rel) return send(res, 404, JSON.stringify({ error: 'Not found' }));
     const target = path.join(root, rel);
     const bytes = await readFile(target);
-    res.writeHead(200, { ...headers, 'Content-Type': mime[path.extname(target)] || 'application/octet-stream', 'Content-Length': bytes.length, 'Cache-Control': rel === 'index.html' ? 'no-store' : 'public, max-age=600' });
+    res.writeHead(200, { ...headers, 'Content-Type': mime[path.extname(target)] || 'application/octet-stream', 'Content-Length': bytes.length, 'Cache-Control': rel === 'index.html' || rel.startsWith('src/') ? 'no-store' : 'public, max-age=600' });
     res.end(req.method === 'HEAD' ? undefined : bytes);
   } catch (err) {
     console.error('Request failed:', err?.message);
