@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="Design a wearable Minecraft-inspired foamboard head from a player skin, with pixel layers, motions, 3D preview, and construction guides.">
+  <title>Minecraft Head Studio · Foamboard builder</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/src/styles.css">
+  <script type="module" src="/src/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div><strong>HEAD<span>STUDIO</span></strong><small>FOAMBOARD / PIXEL WORKSHOP</small></div></div>
+      <div class="top-center"><span class="live-dot"></span><span id="save-status">Local autosave enabled</span><span class="top-separator">/</span><span>V0.1 PROTOTYPE</span></div>
+      <div class="top-actions">
+        <button class="button subdued" id="import-project-button" type="button">↑ <span>Open project</span></button>
+        <button class="button subdued" id="save-project-button" type="button">↓ <span>Save JSON</span></button>
+        <button class="button accent" id="export-guide-button" type="button">↗ Build guide</button>
+        <input id="project-file" type="file" accept=".json,application/json" hidden>
+      </div>
+    </header>
+
+    <div class="content">
+      <aside class="sidebar left-sidebar">
+        <div class="section-eyebrow">01 / SOURCE</div>
+        <h2>Import a skin</h2>
+        <p class="subtext">Start with a Minecraft Java username or your own PNG skin file.</p>
+        <form id="username-form" class="username-form">
+          <label for="username-input">Java Edition username</label>
+          <div class="input-row"><input id="username-input" autocomplete="off" placeholder="e.g. jeb_" maxlength="16" spellcheck="false"><button class="button cyan" id="username-submit" type="submit">Fetch</button></div>
+        </form>
+        <div class="or-divider"><span>or use a file</span></div>
+        <label for="skin-file" class="upload-zone" id="upload-zone"><span class="upload-icon">⇧</span><strong>Upload Minecraft skin</strong><small>PNG · 64×64, 64×32, HD</small></label>
+        <input type="file" id="skin-file" accept="image/png,.png" hidden>
+
+        <div class="split-rule"></div>
+        <div class="section-title"><div><div class="section-eyebrow">02 / MATERIAL STACK</div><h2>Layers <span class="small-count" id="layer-count">2</span></h2></div></div>
+        <p class="subtext">The first two layers are protected. Add outside or internal backing layers.</p>
+        <div id="layer-list" class="layer-list" aria-label="Material layer list"></div>
+        <div class="two-buttons"><button class="button outline" id="add-outer">＋ Outer layer</button><button class="button outline" id="add-internal">＋ Backing</button></div>
+        <div class="hint"><span>⌁</span><span>Extensions beyond the head boundary must touch an existing pixel.</span></div>
+        <div class="left-bottom"><span class="small-tag">GPL-3.0-OR-LATER</span><span>Designed for maker projects</span></div>
+      </aside>
+
+      <main class="workspace">
+        <div class="workspace-heading">
+          <div><div class="section-eyebrow cyan-text">WORKSPACE / HEAD DESIGNER</div><h1 id="project-title" title="Click to rename" tabindex="0" role="button">My Minecraft foamboard head <span class="edit-icon">✎</span></h1><p>Turn a skin into a layered, moving, buildable head.</p></div>
+          <div class="project-chip"><span class="pulse"></span> WORK IN PROGRESS</div>
+        </div>
+        <div class="stats-strip"><div><span>FACE RESOLUTION</span><strong id="stat-res">8 × 8</strong></div><div><span>HEAD WIDTH</span><strong id="stat-width">280 mm</strong></div><div><span>ACTIVE LAYERS</span><strong id="stat-layers">2</strong></div><div><span>SLIDERS</span><strong id="stat-motions">0</strong></div></div>
+
+        <div class="preview-columns">
+          <section class="preview-panel editor-panel">
+            <div class="panel-top"><div><span class="panel-icon">▦</span> 2D PIXEL EDITOR</div><div class="pill-soft" id="editor-coordinates">FRONT · – , –</div></div>
+            <div class="face-selector" id="face-selector"><button data-face="front" class="selected">Front</button><button data-face="right">Right</button><button data-face="back">Back</button><button data-face="left">Left</button><button data-face="top">Top</button><button data-face="bottom">Bottom</button></div>
+            <div class="editor-canvas-wrap"><canvas id="editor-canvas" width="624" height="624" aria-label="Pixel editor, drag to paint"></canvas></div>
+            <div class="editor-tools">
+              <div class="tool-buttons" id="tool-buttons"><button class="tool selected" data-tool="paint" title="Paint (B)">✎</button><button class="tool" data-tool="mesh" title="See-through mesh pixel">▨</button><button class="tool" data-tool="erase" title="Erase (E)">⌫</button><button class="tool" data-tool="pick" title="Pick color">◉</button><button class="tool" data-tool="select" title="Select rectangular area for slider (S)">⬚</button></div>
+              <label class="color-control" title="Pixel color"><input type="color" id="paint-color" value="#dfb18f"><span id="color-label">#DFB18F</span></label>
+              <button class="tool small-icon" id="undo-button" title="Undo (Ctrl+Z)">↶</button><button class="tool small-icon" id="redo-button" title="Redo (Ctrl+Y)">↷</button>
+            </div>
+            <div class="panel-footer"><label class="check-inline"><input type="checkbox" id="grid-toggle" checked> Show extended grid</label><span>Left-drag to paint · right-click to erase</span></div>
+          </section>
+
+          <section class="preview-panel model-panel">
+            <div class="panel-top"><div><span class="panel-icon">⬡</span> 3D LIVE PREVIEW</div><div class="pill-soft">CSS 3D · LIVE</div></div>
+            <div class="model-viewport" id="model-viewport" tabindex="0" aria-label="3D model. Drag to orbit, scroll to zoom.">
+              <div class="orbit-grid"></div><div class="scene3d" id="scene3d"></div>
+              <div class="axis-indicator"><span class="axis-y">Y</span><span class="axis-x">X</span><span class="axis-z">Z</span></div>
+              <div class="model-tip">DRAG TO ROTATE · SCROLL TO ZOOM</div>
+            </div>
+            <div class="model-controls"><button class="button outline tiny" id="reset-view">⟳ Reset view</button><div class="slider-line"><span>Zoom</span><input id="zoom" type="range" min="0.65" max="1.5" step="0.05" value="1"></div></div>
+            <div class="model-footer"><div><small>SELECTED LAYER</small><strong id="model-layer-name">Head shell</strong></div><div><small>DISTANCE FROM CENTER</small><strong id="model-radius">140 mm</strong></div></div>
+          </section>
+        </div>
+        <div class="bottom-message"><span>✦</span><div><strong>Physical pixels, not just a render.</strong> Each cell maps to foamboard, with material, physical dimensions, and possible movement. Save your project before major changes.</div><button id="export-svg-button" class="button subdued">Export face SVG ↗</button></div>
+      </main>
+
+      <aside class="sidebar right-sidebar">
+        <div class="right-header"><div class="section-eyebrow">03 / CONFIGURE</div><h2>Properties</h2></div>
+        <div class="tabs" id="inspector-tabs"><button data-tab="layers" class="active">Layers</button><button data-tab="motion">Motion</button><button data-tab="build">Build</button></div>
+        <section id="tab-layers" class="tab-panel active">
+          <div class="field-section"><div class="field-title">ACTIVE LAYER</div><label for="layer-name">Layer name</label><input type="text" id="layer-name" maxlength="70" placeholder="Layer name">
+            <div class="field-row"><div><label for="layer-gap">Distance from layer below</label><div class="unit-input"><input id="layer-gap" type="number" min="0" max="150" step="0.5" value="0"><span>mm</span></div></div><div><label>From center</label><div class="readonly-value" id="layer-center">140 mm</div></div></div>
+            <div class="measure-card"><div><span>PHYSICAL PIXEL PITCH</span><strong id="pixel-pitch">35 mm</strong></div><div><span>FACE SIDE LENGTH</span><strong id="face-side">280 mm</strong></div></div>
+            <button class="button danger-outline full" id="delete-layer">Delete selected layer</button><p class="helper">The initial head and skin outer layers cannot be deleted.</p></div>
+          <div class="field-section"><div class="field-title">HEAD DIMENSIONS</div><label for="resolution-select">Pixels across each face</label><select id="resolution-select"><option value="8">8 × 8 · Native</option><option value="16">16 × 16 · 2×</option><option value="32">32 × 32 · 4×</option><option value="64">64 × 64 · 8×</option></select><p class="helper">Higher resolution upscales existing pixels using nearest-neighbor. Colors remain crisp.</p>
+            <div class="field-row"><div><label for="head-width">Head width</label><div class="unit-input"><input id="head-width" type="number" min="80" max="1500" step="5"><span>mm</span></div></div><div><label for="foam-thickness">Foamboard thickness</label><div class="unit-input"><input id="foam-thickness" type="number" min="1" max="25" step="0.5"><span>mm</span></div></div></div></div>
+          <div class="field-section"><div class="field-title">COLOR & MATERIAL</div><p class="helper">Paint normally, paint mesh-marked translucent pixels, or erase. Mesh marks are fabrication suggestions, not exact material specifications.</p><div class="legend-line"><span class="legend-swatch solid"></span> Solid foamboard pixel</div><div class="legend-line"><span class="legend-swatch mesh"></span> Mesh / see-through pixel</div></div>
+        </section>
+        <section id="tab-motion" class="tab-panel">
+          <div class="field-section"><div class="field-title">LINEAR SLIDERS</div><p class="helper">Choose ⬚ in the editor, drag across a face to select moving pixels, then create a motion group.</p><button id="new-motion" class="button cyan full">＋ Slider from selection</button><div id="motion-list" class="motion-list"></div><div class="motion-preview"><label for="motion-preview">Preview all sliders</label><div class="slider-line"><input type="range" id="motion-preview" min="0" max="100" value="0"><strong id="motion-preview-value">0%</strong></div><button class="button outline tiny" id="animate-motion">▶ Play movement</button></div></div>
+          <div class="field-section"><div class="field-title">2 × 3 EYE PLOTTER</div><label class="toggle-row"><input id="plotter-enabled" type="checkbox"><span>Enable moving 1 × 2 pixel pupils</span></label><label for="plotter-drive">Rig arrangement</label><select id="plotter-drive"><option value="four-corner">4 corners · tensioned</option><option value="hanging">2 top corners · hanging</option></select><div class="field-row eye-coords"><div><label>Left eye X,Y (native 8×8)</label><div class="input-pair"><input type="number" id="eye-left-x" min="0" max="6" step="1"><input type="number" id="eye-left-y" min="0" max="5" step="1"></div></div><div><label>Right eye X,Y</label><div class="input-pair"><input type="number" id="eye-right-x" min="0" max="6" step="1"><input type="number" id="eye-right-y" min="0" max="5" step="1"></div></div></div>
+            <label for="pupil-x">Pupil X · left ↔ right</label><div class="slider-line"><input id="pupil-x" type="range" min="0" max="100" step="5" value="50"><span id="pupil-x-label">50%</span></div>
+            <label for="pupil-y">Pupil Y · top ↕ bottom</label><div class="slider-line"><input id="pupil-y" type="range" min="0" max="100" step="5" value="50"><span id="pupil-y-label">50%</span></div><div class="measure-card stacked"><span>GEOMETRIC CABLE LENGTHS / PER EYE</span><div id="cord-lengths" class="cord-lengths"></div></div><p class="helper">Preview and cord-length geometry only. Motor synchronization, control software and electronics are planned for a future release.</p></div>
+        </section>
+        <section id="tab-build" class="tab-panel">
+          <div class="field-section"><div class="field-title">FABRICATION</div><label for="trim-mode">Exposed-edge finish</label><select id="trim-mode"><option value="paint">Paint foam-safe acrylic</option><option value="tape">Apply colored edge tape</option></select><label for="trim-color">Trim / edge color</label><input type="color" id="trim-color"><p class="helper">Includes flat edges and 45° miter seams. Always dry-fit your board before final cuts.</p></div>
+          <div class="field-section"><div class="field-title">EXPORT</div><button class="button accent full" id="right-export-guide">↗ Export step-by-step guide</button><button class="button outline full" id="right-export-svg">↓ Export selected face SVG</button><button class="button outline full" id="right-save-json">↓ Backup project JSON</button><p class="helper">The guide is a printable HTML file; open it and use Print → Save as PDF. SVG cut patterns contain millimeter dimensions. Print at 100% and verify scale.</p></div>
+          <div class="field-section"><div class="field-title">BUILD CHECKLIST</div><div class="build-check"><label><input type="checkbox"> Test 45° corner on scrap</label><label><input type="checkbox"> Label panel orientation</label><label><input type="checkbox"> Verify guide rail travel</label><label><input type="checkbox"> Check ventilation and safe fit</label></div></div>
+        </section>
+        <div class="right-foot"><span class="live-dot"></span> PRIVATE BY DEFAULT · SAVED IN THIS BROWSER</div>
+      </aside>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
